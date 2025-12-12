@@ -1,0 +1,340 @@
+library( dplyr)
+library(ggplot2)
+
+red_wine_data <- read.csv("~/Downloads/wine+quality/winequality-red.csv")
+red_wine_data <- read.csv2("~/Downloads/wine+quality/winequality-red.csv", header = TRUE, sep = ";")
+
+
+set.seed(1715)
+
+train_size <- floor(0.8 * nrow(red_wine_data))
+train_indices <- sample(seq_len(nrow(red_wine_data)), size = train_size)
+
+wine_train_data <- red_wine_data[train_indices, ]
+wine_test_data  <- red_wine_data[-train_indices, ]
+
+# Let's create a scatter plot
+install.packages("GGally", dependencies = TRUE)
+install.packages("ggcorrplot")
+install.packages("hexbin")
+install.packages("sjPlot")
+install.packages("sjmisc")
+install.packages("leaps")
+install.packages("olsrr")
+install.packages("MASS")
+
+update.packages(ask = FALSE, checkBuilt = TRUE)
+
+library(ggplot2)
+library(GGally)
+library(ggcorrplot)
+library(dplyr)
+library(corrplot)
+library(tidyr)
+library(sjPlot)
+library(sjmisc)
+library(leaps)
+library(olsrr)
+library(caret)
+library(tidyverse)
+library(MASS)
+
+# Lets try creating a heatmap 
+sapply(red_wine_data, is.numeric)
+
+# first we convert x column to numeric 
+wine_train_data$fixed.acidity <- as.numeric(wine_train_data$fixed.acidity)
+wine_train_data$volatile.acidity <- as.numeric(wine_train_data$volatile.acidity)
+wine_train_data$citric.acid <- as.numeric(wine_train_data$citric.acid)
+wine_train_data$residual.sugar <- as.numeric(wine_train_data$residual.sugar)
+wine_train_data$chlorides <- as.numeric(wine_train_data$chlorides)
+wine_train_data$free.sulfur.dioxide <- as.numeric(wine_train_data$free.sulfur.dioxide)
+wine_train_data$total.sulfur.dioxide <- as.numeric(wine_train_data$total.sulfur.dioxide)
+wine_train_data$density <- as.numeric(wine_train_data$density)
+wine_train_data$pH <- as.numeric(wine_train_data$pH)
+wine_train_data$sulphates <- as.numeric(wine_train_data$sulphates)
+wine_train_data$alcohol <- as.numeric(wine_train_data$alcohol)
+
+wine_train_data$quality <- as.numeric(as.character(wine_train_data$quality))
+
+# correlation matrix
+
+plot_correlation(wine_train_data, cor_args = list( 'use' = 'complete.obs'))
+
+corr_matrix <- cor(wine_train_data, use = "complete.obs")
+
+ggcorrplot(corr_matrix, 
+           hc.order = TRUE, # Order variables by hierarchical clustering
+           type = "lower", # Display only the lower triangle for clarity
+           lab = TRUE, # Add correlation coefficients as text
+           lab_size = 2.5, # Adjust text size
+           method = "square", # Use square cells
+           colors = c("#6D9EC1", "white", "#E46726"), # Define color palette
+           title = "Correlation Heatmap of Red Wine Quality Variables")
+
+corrplot(corr_matrix)
+
+# create box plot
+wine_train_data$quality <- as.factor(wine_train_data$quality)
+
+data_long_train <- wine_train_data %>%
+  pivot_longer(cols = -quality, names_to = "variable", values_to = "value")
+
+ggplot(data_long_train, aes(x = quality, y = value, fill = quality)) +
+  geom_boxplot() +
+  facet_wrap(~ variable, scales = "free_y") + # Creates a grid of 11 plots
+  labs(title = "Distribution of Variables Grouped by Quality Score",
+       x = "Quality Score") +
+  theme_bw()
+
+# --- FIX 2: Clean Data (Remove NA and Inf) so Supernova doesn't crash ---
+wine_train_data <- na.omit(wine_train_data)
+# Remove rows where log might have created -Inf (if you calculated logs earlier) or if there are weird values
+wine_train_data <- wine_train_data[is.finite(wine_train_data$quality), ]
+
+# Fit the linear model
+wine_model_train <- lm(quality ~ ., data = wine_train_data) # ., means explained by all
+                                                   # other variables
+
+# 2. Plot the standardized coefficients
+# The 'type = "std"' argument standardizes the variables so their effects are comparable
+plot_model(wine_model_train, type = "std",
+           title = "Standardized Linear Effects of Predictors on Wine Quality",
+           sort.est = TRUE) # Sort from most impactful to least
+
+library(supernova)
+supernova(wine_model_train)
+anova(wine_model_train)
+wine_model_train
+
+supernova(wine_model_train)
+summary(wine_model_train)
+
+
+
+# scatter plot with volatine acidity
+vol_plot <- ggplot(wine_train_data, aes(x = volatile.acidity, y = quality)) +
+  geom_jitter(width = 0.05, height = 0.1, alpha = 0.5, size = 1.5) +
+  labs(title = "Wine Quality vs. Volitile Acidity",
+       x = "Volitile Acidity",
+       y = "Quality Score") +
+  geom_smooth(method = "lm", col = "red") +
+  theme_minimal()  # Change point shape to a solid circle
+
+# scatter plot with chlorides 
+chlor_plot <- ggplot(wine_train_data, aes(x = chlorides, y = quality)) +
+  geom_jitter(width = 0.05, height = 0.1, alpha = 0.5, size = 1.5) +
+  labs(title = "Wine Quality vs. Chloride Content",
+       x = "Chloride Content",
+       y = "Quality Score") +
+  geom_smooth(method = "lm", col = "red") +
+  theme_minimal() 
+
+# scatter plot with total sulfur dioxide  
+sulfDiox_plot <- ggplot(wine_train_data, aes(x = total.sulfur.dioxide, y = quality)) +
+  geom_jitter(width = 0.05, height = 0.1, alpha = 0.5, size = 1.5) +
+  labs(title = "Wine Quality vs. Total Sulfur Dioxide",
+       x = "Total Sulfur Dioxide",
+       y = "Quality Score") +
+  geom_smooth(method = "lm", col = "red") +
+  theme_minimal() 
+
+# scatter plot with PH 
+pH_plot<- ggplot(wine_train_data, aes(x = pH, y = quality)) +
+  geom_jitter(width = 0.05, height = 0.1, alpha = 0.5, size = 1.5) +
+  labs(title = "Wine Quality vs. pH",
+       x = "pH",
+       y = "Quality Score") +
+  geom_smooth(method = "lm", col = "red") +
+  theme_minimal() 
+
+# scatter plot with sulphates 
+sulph_plot <- ggplot(wine_train_data, aes(x = sulphates, y = quality)) +
+  geom_jitter(width = 0.05, height = 0.1, alpha = 0.5, size = 1.5) +
+  labs(title = "Wine Quality vs. Sulphate Content",
+       x = "Sulphate Content",
+       y = "Quality Score") +
+  geom_smooth(method = "lm", col = "red") +
+  theme_minimal()
+
+# scatter plot with alcohol 
+alco_plot <- ggplot(wine_train_data, aes(x = alcohol, y = quality)) +
+  geom_jitter(width = 0.05, height = 0.1, alpha = 0.5, size = 1.5) +
+  labs(title = "Wine Quality vs. Alcohol Content",
+       x = "Alcohol Content",
+       y = "Quality Score") +
+  geom_smooth(method = "lm", col = "red") +
+  theme_minimal()
+
+fixAcid_plot <- ggplot(wine_train_data, aes(x = fixed.acidity, y = quality)) +
+  geom_jitter(width = 0.05, height = 0.1, alpha = 0.5, size = 1.5) +
+  labs(title = "Wine Quality vs. Fixed Acidity",
+       x = "Fixed Acidity",
+       y = "Quality Score") +
+  geom_smooth(method = "lm", col = "red") +
+  theme_minimal()  # Change point shape to a solid circle
+
+citric <- ggplot(wine_train_data, aes(x = citric.acid, y = quality)) +
+  geom_jitter(width = 0.05, height = 0.1, alpha = 0.5, size = 1.5) +
+  labs(title = "Wine Quality vs. Citric Acid",
+       x = "Citric Acid",
+       y = "Quality Score") +
+  geom_smooth(method = "lm", col = "red") +
+  theme_minimal()  # Change point shape to a solid circle
+
+resSug <- ggplot(wine_train_data, aes(x = residual.sugar, y = quality)) +
+  geom_jitter(width = 0.05, height = 0.1, alpha = 0.5, size = 1.5) +
+  labs(title = "Wine Quality vs. Residual Sugar",
+       x = "Residual Sugar",
+       y = "Quality Score") +
+  geom_smooth(method = "lm", col = "red") +
+  theme_minimal()  # Change point shape to a solid circle
+
+free <- ggplot(wine_train_data, aes(x = free.sulfur.dioxide, y = quality)) +
+  geom_jitter(width = 0.05, height = 0.1, alpha = 0.5, size = 1.5) +
+  labs(title = "Wine Quality vs. Free Sulfur Dioxide",
+       x = "Free Sulfur Dioxide",
+       y = "Quality Score") +
+  geom_smooth(method = "lm", col = "red") +
+  theme_minimal()  # Change point shape to a solid circle
+
+density_plot <- ggplot(wine_train_data, aes(x = density, y = quality)) +
+  geom_jitter(width = 0.05, height = 0.1, alpha = 0.5, size = 1.5) +
+  labs(title = "Wine Quality vs. Density",
+       x = "Density",
+       y = "Quality Score") +
+  geom_smooth(method = "lm", col = "red") +
+  theme_minimal()  # Change point shape to a solid circle
+
+library(patchwork)
+
+(vol_plot + chlor_plot + sulfDiox_plot + pH_plot + sulph_plot + alco_plot + fixAcid_plot + 
+    citric + resSug + free + density_plot) +
+  plot_layout(ncol = 4, nrow = 3)
+
+# Transform dependent variable by log function 
+
+wine_train_data$log_quality <- log(wine_train_data$quality)
+
+wine_model_log <- lm(log_quality ~ fixed.acidity + volatile.acidity + citric.acid +
+                       residual.sugar + chlorides + 
+                       free.sulfur.dioxide + 
+                       total.sulfur.dioxide + density + 
+                       pH + sulphates + alcohol, data = wine_train_data)
+
+summary(wine_model_log)
+supernova(wine_model_log)
+
+
+# lets plot this
+#install.packages("car")
+
+library(car)
+
+
+
+wine_model_log2 <- lm(log_quality ~ volatile.acidity +
+                        chlorides + total.sulfur.dioxide +
+                        pH + sulphates +
+                        alcohol, data = wine_train_data)
+summary(wine_model_log2)
+supernova(wine_model_log2)
+
+# VIF
+car::vif(wine_model_train) #vif high for fixed acidity and density
+
+#lets remove those variables
+wine_model_train2 <- lm(quality ~ . -fixed.acidity -log_quality -density, data = wine_train_data)
+summary(wine_model_train2)
+
+#R^2 went up slightly
+
+car::vif(wine_model_train2) 
+
+car::vif(wine_model_log)
+
+# remove insignificant variables
+wine_model_train3 <- lm(quality ~ volatile.acidity + chlorides +
+                          total.sulfur.dioxide + pH + sulphates+ alcohol, data = 
+                          wine_train_data)
+summary(wine_model_train3) # model with non significant variables removed
+
+supernova(wine_model_train3)
+
+BIC(wine_model_train)
+BIC(wine_model_train2)
+BIC(wine_model_train3) #n has the lowest score. will use and test this model
+BIC(wine_model_log)
+BIC(wine_model_log2)
+
+#Testing the model
+# Predict the dependent variable on the test data with regular lm model
+# not removing the variables 
+wine_test_data$fixed.acidity <- as.numeric(wine_test_data$fixed.acidity)
+wine_test_data$volatile.acidity <- as.numeric(wine_test_data$volatile.acidity)
+wine_test_data$citric.acid <- as.numeric(wine_test_data$citric.acid)
+wine_test_data$residual.sugar <- as.numeric(wine_test_data$residual.sugar)
+wine_test_data$chlorides <- as.numeric(wine_test_data$chlorides)
+wine_test_data$free.sulfur.dioxide <- as.numeric(wine_test_data$free.sulfur.dioxide)
+wine_test_data$total.sulfur.dioxide <- as.numeric(wine_test_data$total.sulfur.dioxide)
+wine_test_data$density <- as.numeric(wine_test_data$density)
+wine_test_data$pH <- as.numeric(wine_test_data$pH)
+wine_test_data$sulphates <- as.numeric(wine_test_data$sulphates)
+wine_test_data$alcohol <- as.numeric(wine_test_data$alcohol)
+wine_test_data$quality <- as.numeric(as.character(wine_test_data$quality))
+
+predictions_wineTrain3 <- predict(wine_model_train3, newdata = wine_test_data)
+actuals_predictions_wineTrain3 <- data.frame(actuals = wine_test_data$quality, predictions = predictions_wineTrain3)
+head(actuals_predictions_wineTrain3)
+
+rmse3 <- sqrt(mean((actuals_predictions_wineTrain3$predictions - actuals_predictions_wineTrain3$actuals)^2))
+print(paste("RMSE:", rmse3))
+
+# Calculate Total Sum of Squares (TSS)
+tss_wintTrain3 <- sum((actuals_predictions_wineTrain3$actuals - mean(actuals_predictions_wineTrain3$actuals))^2)
+# Calculate Residual Sum of Squares (RSS)
+rss_wineTrain3 <- sum((actuals_predictions_wineTrain3$predictions - actuals_predictions_wineTrain3$actuals)^2)
+# Calculate R-squared
+r_squared_wineTrain3 <- 1 - (rss_wineTrain3 / tss_wintTrain3)
+print(paste("R-squared on test data:", r_squared_wineTrain3))
+
+ggplot(actuals_predictions_wineTrain3, aes(x = actuals, y = predictions)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(title = "Actual vs. Predicted Values", x = "Actual Values", y = "Predicted Values") +
+  theme_minimal()
+
+# for model_train2 log
+predictions_original_scale <- exp(predictions_wineLog)
+predictions_wineLog <- predict(wine_model_log2, newdata = wine_test_data)
+actuals_predictions_wineLog <- data.frame(actuals = wine_test_data$quality, predictions = predictions_original_scale)
+head(actuals_predictions_wineLog)
+predictions_original_scale <- exp(predictions_wineLog)
+
+rmse_log <- sqrt(mean((actuals_predictions_wineLog$predictions - actuals_predictions_wineLog$actuals)^2))
+print(paste("RMSE:", rmse_log))
+
+# Calculate Total Sum of Squares (TSS)
+tss_wineLog <- sum((actuals_predictions_wineLog$actuals - mean(actuals_predictions_wineLog$actuals))^2)
+# Calculate Residual Sum of Squares (RSS)
+rss_wineLog <- sum((actuals_predictions_wineLog$predictions - actuals_predictions_wineLog$actuals)^2)
+# Calculate R-squared
+r_squared_wineTrain <- 1 - (rss_wineLog / tss_wineLog)
+print(paste("R-squared on test data:", r_squared_wineTrain))
+
+ggplot(actuals_predictions_wineLog, aes(x = actuals, y = predictions)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(title = "Actual vs. Predicted Values", x = "Actual Values", y = "Predicted Values") +
+  theme_minimal()
+
+# histogram
+
+ggplot(red_wine_data, aes(x = quality)) +
+  geom_histogram(binwidth = 1, fill = "lavender", color = "black") +
+  labs(title = "Distribution of Wine Quality Ratings", x = "Quality Rating", y = "Count")
+
+
+
+confint(wine_model_train3, level = 0.95 )
+
